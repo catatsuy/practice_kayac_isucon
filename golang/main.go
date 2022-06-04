@@ -21,6 +21,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
 	"github.com/oklog/ulid/v2"
+	proxy "github.com/shogo82148/go-sql-proxy"
 	"github.com/srinathgs/mysqlstore"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -37,6 +38,8 @@ var (
 	tr           = &renderer{templates: template.Must(template.ParseGlob("views/*.html"))}
 	// for use ULID
 	entropy = ulid.Monotonic(rand.New(rand.NewSource(time.Now().UnixNano())), 0)
+
+	isDev bool
 )
 
 func getEnv(key string, defaultValue string) string {
@@ -58,6 +61,12 @@ func connectDB() (*sqlx.DB, error) {
 	config.InterpolateParams = true
 
 	dsn := config.FormatDSN()
+	if isDev {
+		proxy.RegisterTracer()
+
+		return sqlx.Open("mysql:trace", dsn)
+	}
+
 	return sqlx.Open("mysql", dsn)
 }
 
@@ -77,6 +86,9 @@ func cacheControllPrivate(next echo.HandlerFunc) echo.HandlerFunc {
 }
 
 func main() {
+	if os.Getenv("DEV") == "1" {
+		isDev = true
+	}
 	e := echo.New()
 	e.Debug = true
 	e.Logger.SetLevel(log.DEBUG)
