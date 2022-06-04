@@ -1735,6 +1735,11 @@ func initializeHandler(c echo.Context) error {
 	}
 	defer conn.Close()
 
+	if _, err := conn.ExecContext(ctx, "SET long_query_time = 60.0"); err != nil {
+		c.Logger().Errorf("error: initialize %s", err)
+		return errorResponse(c, 500, "internal server error")
+	}
+
 	if _, err := conn.ExecContext(
 		ctx,
 		"DELETE FROM user WHERE ? < `created_at`",
