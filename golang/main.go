@@ -76,6 +76,8 @@ func cacheControllPrivate(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
+var songIDMap map[int]SongRow
+
 func main() {
 	e := echo.New()
 	e.Debug = true
@@ -139,6 +141,19 @@ func main() {
 	}
 	e.Logger.Info("DB ready!")
 	defer db.Close()
+
+	songRows := make([]SongRow, 0, 347677)
+	songIDMap = make(map[int]SongRow)
+
+	db.SelectContext(
+		context.Background(),
+		&songRows,
+		"SELECT * FROM song",
+	)
+
+	for _, sr := range songRows {
+		songIDMap[sr.ID] = sr
+	}
 
 	sessionStore, err = mysqlstore.NewMySQLStoreFromConnection(db.DB, "sessions_golang", "/", 86400, []byte("powawa"))
 	if err != nil {
@@ -714,15 +729,7 @@ func getPlaylistDetailByPlaylistULID(ctx context.Context, db connOrTx, playlistU
 
 	songs := make([]Song, 0, len(resPlaylistSongs))
 	for _, row := range resPlaylistSongs {
-		var song SongRow
-		if err := db.GetContext(
-			ctx,
-			&song,
-			"SELECT * FROM song WHERE id = ?",
-			row.SongID,
-		); err != nil {
-			return nil, fmt.Errorf("error Get song by id=%d: %w", row.SongID, err)
-		}
+		song := songIDMap[row.SongID]
 
 		var artist ArtistRow
 		if err := db.GetContext(
