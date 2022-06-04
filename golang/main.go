@@ -449,6 +449,38 @@ func getSongsCountByPlaylistID(ctx context.Context, db connOrTx, playlistID int)
 	return count, nil
 }
 
+func getSongsCountByPlaylistIDs(ctx context.Context, db connOrTx, playlistIDs []int) (map[int]int, error) {
+	var playlistSongs []struct {
+		PlaylistID int `db:"playlist_id"`
+		Count      int `db:"cnt"`
+	}
+
+	query, args, err := sqlx.In("SELECT playlist_id,COUNT(*) AS cnt FROM playlist_song where playlist_id IN (?) group by playlist_id", playlistIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := db.SelectContext(
+		ctx,
+		&playlistSongs,
+		query,
+		args...,
+	); err != nil {
+		return nil, fmt.Errorf(
+			"error Get count of playlist_song by playlist_id=%v: %w",
+			playlistIDs, err,
+		)
+	}
+
+	pids := make(map[int]int)
+
+	for _, ps := range playlistSongs {
+		pids[ps.PlaylistID] = ps.Count
+	}
+
+	return pids, nil
+}
+
 func getRecentPlaylistSummaries(ctx context.Context, db connOrTx, userAccount string) ([]Playlist, error) {
 	var allPlaylists []PlaylistRow
 	if err := db.SelectContext(
@@ -466,6 +498,16 @@ func getRecentPlaylistSummaries(ctx context.Context, db connOrTx, userAccount st
 		return nil, nil
 	}
 
+	playlistIDs := make([]int, 0, len(allPlaylists))
+	for _, p := range allPlaylists {
+		playlistIDs = append(playlistIDs, p.ID)
+	}
+
+	songsCountByPlaylistIDs, err := getSongsCountByPlaylistIDs(ctx, db, playlistIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	playlists := make([]Playlist, 0, len(allPlaylists))
 	for _, playlist := range allPlaylists {
 		user, err := getUserByAccount(ctx, db, playlist.UserAccount)
@@ -476,7 +518,7 @@ func getRecentPlaylistSummaries(ctx context.Context, db connOrTx, userAccount st
 			continue
 		}
 
-		songCount, err := getSongsCountByPlaylistID(ctx, db, playlist.ID)
+		songCount := songsCountByPlaylistIDs[playlist.ID]
 		if err != nil {
 			return nil, fmt.Errorf("error getSongsCountByPlaylistID: %w", err)
 		}
